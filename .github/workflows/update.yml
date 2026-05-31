@@ -1,0 +1,111 @@
+name: Sync Update
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MY_PAT_TOKEN }}
+
+      - name: Setup Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Cache Tools
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: ${{ runner.os }}-tools-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-tools-
+
+      - name: Prepare Tools
+        run: |
+          command -v subfinder >/dev/null || go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          command -v nuclei >/dev/null || go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+          echo "Environment ready."
+
+      - name: Process Task
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          # Silent processing
+          if [ ! -s data/targets.list ]; then
+            echo "No targets available." > /dev/null
+            exit 0
+          fi
+
+          RAW=$(head -n 1 data/targets.list)
+          TARGET=$(echo "$RAW" | tr -d '\r' | xargs)
+          sed -i '1d' data/targets.list
+
+          if [ -z "$TARGET" ]; then
+            exit 0
+          fi
+
+          # Silent start (only Discord)
+          curl -s -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\": \"🔄 Processing: **${TARGET}**\"}" \
+            "$WEBHOOK" || true
+
+          # Subdomain discovery
+          subfinder -d "$TARGET" -silent -o subdomains.tmp >/dev/null 2>&1
+
+          awk '{print "https://" $0}' subdomains.tmp > https.list 2>/dev/null
+          awk '{print "http://" $0}' subdomains.tmp > http.list 2>/dev/null
+
+          # HTTPS Scan - Silent
+          if [ -s https.list ]; then
+            nuclei -l https.list -t rules/ -silent -o https-results.txt >/dev/null 2>&1 || true
+            if [ -s https-results.txt ]; then
+              while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                  curl -s -H "Content-Type: application/json" \
+                    -X POST \
+                    -d "{\"content\": \"⚠️ **Detection**\\n\`\`\`\\n${line}\\n\`\`\`\"}" \
+                    "$WEBHOOK" || true
+                fi
+              done < https-results.txt
+            fi
+          fi
+
+          # HTTP Scan - Silent
+          if [ -s http.list ]; then
+            nuclei -l http.list -t rules/ -silent -o http-results.txt >/dev/null 2>&1 || true
+            if [ -s http-results.txt ]; then
+              while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                  curl -s -H "Content-Type: application/json" \
+                    -X POST \
+                    -d "{\"content\": \"⚠️ **Detection**\\n\`\`\`\\n${line}\\n\`\`\`\"}" \
+                    "$WEBHOOK" || true
+                fi
+              done < http-results.txt
+            fi
+          fi
+
+          # Silent completion
+          curl -s -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\": \"✅ Task completed: **${TARGET}**\"}" \
+            "$WEBHOOK" || true
+
+          # Commit changes silently
+          git config --global user.name "system"
+          git config --global user.email "system@noreply.github.com"
+          git add data/targets.list
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync update" -q
+            git push origin main -q
+          fi

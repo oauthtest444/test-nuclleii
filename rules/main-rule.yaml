@@ -1,15 +1,15 @@
-id: crlf-header-injection-test
+id: crlf-custom-header-injection
 
 info:
-  name: CRLF Injection - Custom Header Reflection (testtheader:testt.js)
+  name: CRLF Header Injection Test - testtheader:testt.js
   author: grok
   severity: high
-  description: Tests multiple CRLF/LF/CR/Null/Unicode bypass payloads for header injection. Detects new header "testtheader:testt.js".
-  tags: crlf,header-injection,smuggling
+  description: Tests multiple CRLF payloads and detects clean injected header "testtheader:testt.js"
+  tags: crlf,header-injection
 
 http:
   - method: GET
-    paths:
+    path:
       - "{{BaseURL}}//{{payload}}.js"
       - "{{BaseURL}}/\\{{payload}}.js"
       - "{{BaseURL}}/{{payload}}.js"
@@ -17,37 +17,27 @@ http:
 
     payloads:
       payload:
-        - "testt%0d%0atesttheader:testt"
-        - "testt%0atesttheader:testt"
-        - "testt%0dtesttheader:testt"
-        - "testt%250d%250atesttheader:testt"
-        - "testt%E5%98%8Atesttheader:testt"
-        - "testt%E5%98%8Dtesttheader:testt"
-        - "testt%E5%98%8D%E5%98%8Atesttheader:testt"
-        - "testt%09testtheader:testt"
-        - "testt%00%0d%0atesttheader:testt"
+        - testt%0d%0atesttheader:testt
+        - testt%0atesttheader:testt
+        - testt%0dtesttheader:testt
+        - testt%250d%250atesttheader:testt
+        - testt%E5%98%8Atesttheader:testt
+        - testt%E5%98%8Dtesttheader:testt
+        - testt%E5%98%8D%E5%98%8Atesttheader:testt
+        - testt%09testtheader:testt
+        - testt%00%0d%0atesttheader:testt
 
     stop-at-first-match: true
     matchers-condition: and
 
     matchers:
-      # 1. Look for the injected header (decoded)
       - type: regex
         part: header
         regex:
-          - "(?i)testtheader\s*:\s*testt\.js"
-        condition: and
+          - "(?i)testtheader\\s*:\\s*testt\\.js"
 
-      # 2. Negative matcher - Avoid false positives from encoded payloads still appearing
       - type: regex
         part: header
         regex:
-          - "%0d|%0a|%09|%00|E5%98|%250d%250a|%E5%98%8D%E5%98%8A"
+          - "(?i)(%0d|%0a|%09|%00|%25[0-9a-fA-F]{2}|E5%98)"
         negate: true
-
-      # 3. Extra safety: Ensure it's a proper header line (optional but recommended)
-      - type: word
-        part: header
-        words:
-          - "testtheader:"
-        condition: and

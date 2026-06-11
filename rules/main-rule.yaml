@@ -1,18 +1,18 @@
 id: crlf-custom-header-injection
 
 info:
-  name: CRLF Header Injection Test - testtheader:testt.js
+  name: CRLF Header Injection - Strict testtheader:testt.js
   author: grok
   severity: high
-  description: Tests multiple CRLF payloads and detects clean injected header "testtheader:testt.js"
+  description: Detects real CRLF injection creating new clean header "testtheader:testt.js". Avoids matches inside reflected Location/paths.
   tags: crlf,header-injection
 
 http:
   - method: GET
     path:
       - "{{BaseURL}}//{{payload}}.js"
-      - "{{BaseURL}}/\\{{payload}}.js"
       - "{{BaseURL}}/{{payload}}.js"
+      - "{{BaseURL}}/\\{{payload}}.js"
       - "{{BaseURL}}\\{{payload}}.js"
 
     payloads:
@@ -31,13 +31,8 @@ http:
     matchers-condition: and
 
     matchers:
+      # Strict matcher: Only matches if "testtheader" appears as a real header name at start of line
       - type: regex
         part: header
         regex:
-          - "(?i)testtheader\\s*:\\s*testt\\.js"
-
-      - type: regex
-        part: header
-        regex:
-          - "(?i)(%0d|%0a|%09|%00|%25[0-9a-fA-F]{2}|E5%98)"
-        negate: true
+          - "(?i)^testtheader\\s*:\\s*testt\\.js"

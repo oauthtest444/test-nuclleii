@@ -11,9 +11,9 @@ http:
   - method: GET
     paths:
       - "{{BaseURL}}//{{payload}}.js"
-      - "{{BaseURL}}/\{{payload}}.js"
+      - "{{BaseURL}}/\\{{payload}}.js"
       - "{{BaseURL}}/{{payload}}.js"
-      - "{{BaseURL}}\{{payload}}.js"
+      - "{{BaseURL}}\\{{payload}}.js"
 
     payloads:
       payload:
